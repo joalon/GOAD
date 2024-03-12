@@ -7,7 +7,7 @@ ERROR=$(tput setaf 1; echo -n "  [!]"; tput sgr0)
 GOODTOGO=$(tput setaf 2; echo -n "  [✓]"; tput sgr0)
 INFO=$(tput setaf 3; echo -n "  [-]"; tput sgr0)
 
-PROVIDERS="virtualbox vmware azure proxmox"
+PROVIDERS="virtualbox vmware azure proxmox libvirt"
 ANSIBLE_HOSTS="docker local"
 print_usage() {
   echo "Usage: ./check.sh <provider> <ansible_host>"
@@ -93,6 +93,17 @@ check_virtualbox_installed() {
     exit 1
   else
     (echo >&2 "${GOODTOGO} virtualbox is installed")
+  fi
+}
+
+check_libvirt_installed() {
+  if ! which libvirtd >/dev/null; then
+    (echo >&2 "${ERROR} libvirtd was not found in your PATH.")
+    (echo >&2 "${ERROR} Please correct this before continuing. Exiting.")
+    (echo >&2 "${ERROR} Correct this by installing libvirt")
+    exit 1
+  else
+    (echo >&2 "${GOODTOGO} libvirt is installed")
   fi
 }
 
@@ -358,6 +369,22 @@ check_vagrant_reload_plugin() {
   fi
 }
 
+check_vagrant_reload_plugin() {
+  # Ensure the vagrant-libvirt plugin is installed
+  VAGRANT_RELOAD_PLUGIN_INSTALLED=$(vagrant plugin list | grep -c 'vagrant-libvirt')
+  if [ "$VAGRANT_RELOAD_PLUGIN_INSTALLED" != "1" ]; then
+    (echo >&2 "${ERROR} The vagrant-libvirt plugin is required and was not found. This script will attempt to install it now.")
+    if ! $(which vagrant) plugin install "vagrant-libvirt"; then
+      (echo >&2 "Unable to install the vagrant-libvirt plugin. Please try to do so manually and re-run this script.")
+      exit 1
+    else 
+      (echo >&2 "${GOODTOGO} The vagrant-libvirt plugin was successfully installed!")
+    fi
+  else
+    (echo >&2 "${GOODTOGO} The vagrant-libvirt plugin is currently installed")
+  fi
+}
+
 # Check available disk space. Recommend 120GB free, warn if less.
 check_disk_free_space() {
   FREE_DISK_SPACE=$(df -m "$HOME" | tr -s ' ' | grep '/' | cut -d ' ' -f 4)
@@ -408,6 +435,25 @@ main() {
       check_vagrant_reload_plugin
       check_vagrant_vmware_utility_installed
       check_vmware_desktop_vagrant_plugin_installed
+      check_disk_free_space
+      check_ram_space
+      case $ANSIBLE_HOST in
+        "docker")
+          check_docker_installed
+          ;;
+        "local")
+          check_python_env
+          ;;
+        *)
+          ;;
+      esac
+      ;;
+    "libvirt")
+      (echo >&2 "[+] Enumerating libvirt")
+      check_libvirt_installed
+      check_vagrant_path
+      check_vagrant_reload_plugin
+      check_vagrant_libvirt_plugin
       check_disk_free_space
       check_ram_space
       case $ANSIBLE_HOST in
